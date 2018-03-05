@@ -26,7 +26,7 @@ FILTER_THRESH                   # Threshold[s] for retina filtering
 DEBLEND_NTHRESH  32             # Number of deblending sub-thresholds
 DEBLEND_MINCONT  0.005          # Minimum contrast parameter for deblending
  
-CLEAN            Y              # Clean spurious detections? (Y or N)?
+CLEAN            N              # Clean spurious detections? (Y or N)?
 CLEAN_PARAM      1.0            # Cleaning efficiency
  
 MASK_TYPE        CORRECT        # type of detection MASKing: can be one of
@@ -78,7 +78,7 @@ BACK_VALUE       0.0            # Default background value in MANUAL mode
 BACK_SIZE        64             # Background mesh: <size> or <width>,<height>
 BACK_FILTERSIZE  3              # Background filter: <size> or <width>,<height>
  
-BACKPHOTO_TYPE   GLOBAL         # can be GLOBAL or LOCAL
+BACKPHOTO_TYPE   LOCAL         # can be GLOBAL or LOCAL
 BACKPHOTO_THICK  24             # thickness of the background LOCAL annulus
 BACK_FILTTHRESH  0.0            # Threshold above which the background-
                                 # map filter operates
