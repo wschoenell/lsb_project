@@ -7,6 +7,7 @@ from tempfile import mkstemp
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
+from copy import deepcopy
 
 plt.ion()
 
@@ -51,7 +52,7 @@ def remove_borders(img, wei=None, box_size=3, tresh=0.1):
         return img[x0:x1, y0: y1], wei[x0:x1, y0:y1]
 
 
-def make_stamp(img, wei, x0, x1, y0, y1):
+def make_stamp(img, wei, x0, x1, y0, y1, wcs=None):
     # if ((img[x0:x1, y0:y1] > 0).sum() / len(img[x0:x1, y0:y1])) > 0.99 and (wei[x0:x1, y0:y1] > 0).sum() / len(
     #         wei[x0:x1, y0:y1]) > 0.99:
     _, img_file = mkstemp(dir=os.path.expanduser("~/data/tmp_stamps/"))
@@ -64,7 +65,16 @@ def make_stamp(img, wei, x0, x1, y0, y1):
     img_stamp = img[x0:x1, y0:y1]
     wei_stamp = wei[x0:x1, y0:y1]
 
-    img_stamp, wei_stamp = remove_borders(img_stamp, wei_stamp)
+    if wcs is not None:
+        wcs = deepcopy(wcs)
+        crval = wcs.all_pix2world(y0, x0, 0)
+        wcs.wcs.crpix = [0, 0]
+        wcs.wcs.crval = crval
+        hdr = wcs.to_header()
+    else:
+        hdr = None
+
+    # img_stamp, wei_stamp = remove_borders(img_stamp, wei_stamp)
 
     try:
         fits.writeto(img_file, img_stamp)
