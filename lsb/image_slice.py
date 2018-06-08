@@ -2,12 +2,17 @@
 from __future__ import print_function
 from __future__ import division
 import os
+import pdb
 from tempfile import mkstemp
 
+from astropy import units
+from astropy.coordinates import SkyCoord
 from astropy.io import fits
 import numpy as np
 import matplotlib.pyplot as plt
 from copy import deepcopy
+
+from astropy.wcs import WCS
 
 plt.ion()
 
@@ -52,18 +57,32 @@ def remove_borders(img, wei=None, box_size=3, tresh=0.1):
         return img[x0:x1, y0: y1], wei[x0:x1, y0:y1]
 
 
-def make_stamp(img, wei, x0, x1, y0, y1, wcs=None):
+def make_stamp(img, wei, x0, x1, y0, y1, wcs=None, filter_images=None, color_image=None, color_image_wcs=None):
     # if ((img[x0:x1, y0:y1] > 0).sum() / len(img[x0:x1, y0:y1])) > 0.99 and (wei[x0:x1, y0:y1] > 0).sum() / len(
     #         wei[x0:x1, y0:y1]) > 0.99:
-    _, img_file = mkstemp(dir=os.path.expanduser("~/data/tmp_stamps/"))
+
+    # Check limits
+    if x0 >= x1 or y0 >= y1:
+        raise ValueError("must: x0 < x1 and y0 < y1")
+
+    fd, img_file = mkstemp(dir=os.path.expanduser("~/data/tmp_stamps/"))
+    os.close(fd)
 
     # Temporary file names
+    os.unlink(img_file)
     wei_file = img_file + ".wei.fits"
     img_file = img_file + ".fits"
     seg_file = wei_file.replace("wei", "seg")
 
     img_stamp = img[x0:x1, y0:y1]
     wei_stamp = wei[x0:x1, y0:y1]
+
+    # Test if sum(wei < thesh) is less than 90%
+    mask = wei_stamp <= 1e-4
+    invalid = mask.sum() / mask.size
+    if invalid > 0.90 or len(mask) < 1:
+        print("Skipping %.3f..." % invalid)
+        return False
 
     if wcs is not None:
         wcs = deepcopy(wcs)
@@ -76,17 +95,17 @@ def make_stamp(img, wei, x0, x1, y0, y1, wcs=None):
 
     # img_stamp, wei_stamp = remove_borders(img_stamp, wei_stamp)
 
-    try:
-        fits.writeto(img_file, img_stamp)
-        fits.writeto(wei_file, wei_stamp)
-    except IOError:
-        pass
+    # try:
+    fits.writeto(img_file, img_stamp, header=hdr)
+    fits.writeto(wei_file, wei_stamp, header=hdr)
+    # except IOError:
+    #     pass
 
     # Run SExtractor
 
     if not os.path.exists(seg_file):
         kwargs = {'code': 'SExtractor',
-                  'config_file': os.path.expanduser('~/PyCharmProjects/lsb_project/lsb/config.sex'),
+                  'config_file': os.path.expanduser('~/workspace/lsb/lsb_project/lsb/config.sex'),
                   'cmd': '/usr/local/bin/sex',
                   'temp_path': '.',
                   'config': {'WEIGHT_TYPE': 'MAP_WEIGHT',
@@ -101,7 +120,74 @@ def make_stamp(img, wei, x0, x1, y0, y1, wcs=None):
         sex = aw.api.Astromatic(**kwargs)
         sex.run(img_file)
 
-    return img_file, wei_file, seg_file
+    stamp_coord = wcs.all_pix2world([[(y1 - y0) / 2 + 0.5, (x1 - x0) / 2 + 0.5]], 0)  # Central coordinate
+    if wcs is not None and filter_images is not None:
+        print("coord: ", SkyCoord(stamp_coord[0][0] * units.deg, stamp_coord[0][1] * units.deg).to_string('hmsdms'))
+        filter_files = dict()
+        filter_files_weight = dict()
+        for filter_name in filter_images:
+            exts = fits.open(filter_images[filter_name])
+            exts_wei = fits.open(
+                filter_images[filter_name].replace('.fits.fz', '.weight.fits.fz'))  # FIXME: too hardocoded
+            for i_ext, e in enumerate(exts[1:]):
+                w = WCS(e.header)
+                # print([stamp_coord[0][0]], [stamp_coord[0][1]], 0)
+                pix = w.all_world2pix([stamp_coord[0][0]], [stamp_coord[0][1]], 0)
+                pix = pix[1][0], pix[0][0]
+                if 0 < pix[0] < e.shape[0] and 0 < pix[1] < e.shape[1]:
+                    dx, dy = (x1 - x0) / 2, (y1 - y0) / 2
+                    xx0 = int(pix[0] - dx) if pix[0] - dx > 0 else 0
+                    yy0 = int(pix[1] - dy) if pix[1] - dy > 0 else 0
+                    xx1 = int(pix[0] + dx) if pix[0] + dx < img.shape[0] else img.shape[0]
+                    yy1 = int(pix[1] + dy) if pix[1] + dy < img.shape[1] else img.shape[1]
+                    out_fname = img_file.replace('.fits', '%s.fits' % filter_name)
+
+                    # slice
+                    print(e.header['EXTNAME'], xx0, xx1, yy0, yy1)
+                    filter_stamp = e.data[xx0:xx1, yy0:yy1]
+                    filter_stamp_weight = exts_wei[i_ext + 1].data[xx0:xx1, yy0:yy1]
+
+                    # Do the wcs
+                    w = deepcopy(w)
+                    crval = w.all_pix2world(yy0, xx0, 0)
+                    w.wcs.crpix = [0, 0]
+                    w.wcs.crval = crval
+                    hdr = w.to_header()
+
+                    # write image
+                    fits.writeto(out_fname, filter_stamp, header=hdr)
+                    filter_files.update({filter_name: out_fname})
+                    # write weight
+                    out_fname = out_fname.replace(".fits", "wei.fits")
+                    fits.writeto(out_fname, filter_stamp_weight, header=hdr)
+                    filter_files_weight.update({filter_name: out_fname})
+
+                    # break
+            exts.close()
+            exts_wei.close()
+
+        ret = img_file, wei_file, seg_file, filter_files, filter_files_weight
+    else:
+
+        ret = img_file, wei_file, seg_file
+
+    if color_image is not None and color_image_wcs is not None:
+        stamp_coord = wcs.all_pix2world([[0, 0]], 0)  # Stamp coordinate
+        pix = color_image_wcs.all_world2pix([stamp_coord[0][0]], [stamp_coord[0][1]], 0)
+        print(stamp_coord, pix)
+        xx0, yy0 = pix[1][0], pix[0][0]
+        xx0 = xx0 if xx0 > 0 else 0
+        yy0 = yy0 if yy0 > 0 else 0
+        xx1 = xx0 + img_stamp.shape[0] if xx0 + img_stamp.shape[0] < color_image.shape[0] else color_image.shape[0]
+        yy1 = yy0 + img_stamp.shape[1] if yy0 + img_stamp.shape[1] < color_image.shape[1] else color_image.shape[1]
+        # print(xx0,xx1,yy0,yy1)
+        # pdb.set_trace()
+        color_stamp = color_image[int(xx0):int(xx1), int(yy0):int(yy1)]
+
+        ret = list(ret)
+        ret += [color_stamp]
+
+    return ret
 
 
 if __name__ == '__main__':

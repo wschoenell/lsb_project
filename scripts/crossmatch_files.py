@@ -14,7 +14,7 @@ overwrite_coadd = False
 # files_dir = os.path.expanduser("~/data/lsb/data_example")
 # object = None
 
-files_dir = os.path.expanduser("/home/william/data/ngc3115")
+files_dir = os.path.expanduser("~/data/ngc3115")
 workdir = "~/data/ngc3115/work/"
 object = 'NGC 3115'
 
@@ -33,7 +33,7 @@ for dirpath, dirnames, filenames in os.walk(files_dir):
 
 pointings = np.array(pointings)
 
-np.savetxt(os.path.expanduser("%s/input_list.txt" % workdir), pointings, fmt="%s\t%s\t%s")
+# np.savetxt(os.path.expanduser("%s/input_list.txt" % workdir), pointings, fmt="%s\t%s\t%s")
 
 catalog = SkyCoord(["%s %s" % (p[1], p[2]) for p in pointings], unit=(u.hourangle, u.deg))
 
@@ -54,16 +54,35 @@ final_match = list(np.unique(final_match, axis=0))
 
 # Run SWARP
 for m in final_match:
-
-    # Co-added file names
+    # SUPER Co-added file names
     coadd_file = os.path.expanduser("%s/coadd_%s_%s.fits" % tuple(np.append([workdir], pointings[m[-1]][1:3])))
     coadd_weifile = os.path.expanduser(
         "%s/coadd_%s_%s.weight.fits" % tuple(np.append([workdir], pointings[m[-1]][1:3])))
+
+    # Check if it is necessary to combine multiple images to get one FILTER co-added
+    filters = dict()
+    for img_infile in [pointings[i_m][0] for i_m in m]:
+        filtername = fits.getheader(img_infile)['FILTER']
+        if filtername not in filters:
+            filters[filtername] = [img_infile]
+        else:
+            filters[filtername].append(img_infile)
+    for filtername in filters:
+        if len(filters[filtername]) > 1:
+            raise NotImplemented("Not implemented error: FILTER co-add, only symbolic link")  # TODO: co-add also images
+        else:
+            f = filtername.split(' ')[0]
+            coadd_file_filter = coadd_file.replace(".fits", ".%s.fits" % f)
+            coadd_weifile_filter = coadd_weifile.replace(".weight.fits", ".%s.weight.fits" % f)
+            # filters[filtername][0]
+            print("ln -s %s %s.fz" % (filters[filtername][0], coadd_file_filter))
+            print("ln -s %s %s.fz" % (filters[filtername][0].replace('osi', 'osw'), coadd_weifile_filter))
 
     # if co-added already exists, skip...
     if os.path.exists(coadd_file + ".fz") and os.path.exists(coadd_weifile + ".fz") and not overwrite_coadd:
         print("Files %s and %s already exists. Skipping coadd." % (coadd_file, coadd_weifile))
     else:
+        # else, do the SUPER co-add...
         for i_ext in range(1, 10):
             for img_infile in [pointings[i_m][0] for i_m in m]:
                 script = ""
@@ -84,7 +103,7 @@ for m in final_match:
                         sys.exit(1)
 
         # Run SWarp
-        script = "swarp %s -c $HOME/workspace/lsb_project/conf/swarp.conf\n" % (" ".join(
+        script = "swarp %s -c $HOME/workspace/lsb/lsb_project/conf/swarp.conf\n" % (" ".join(
             [" ".join([pointings[i_m][0].replace("fits.fz", "%i.fits" % i_ext) for i_ext in range(1, 10)]) for i_m in
              m]))
 
