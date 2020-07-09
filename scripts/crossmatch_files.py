@@ -95,38 +95,38 @@ for m in final_match:
                 wei_file = "%s.%i.weight.fits" % (img_infile.replace(".fits.fz", ""), i_ext)
                 script += "funpack -E %i -O %s %s \n" % (i_ext, wei_file, wei_infile)
 
-                os.system(script)
+                #os.system(script)
 
                 for f in img_infile, img_file, wei_infile, wei_file:
                     if not os.path.exists(f):
                         print("File not found", f)
-                        sys.exit(1)
+                        # sys.exit(1)
 
         # Run SWarp
         script = "swarp %s -c $HOME/workspace/lsb/lsb_project/conf/swarp.conf\n" % (" ".join(
             [" ".join([pointings[i_m][0].replace("fits.fz", "%i.fits" % i_ext) for i_ext in range(1, 10)]) for i_m in
              m]))
 
-        os.system(script)
+        #os.system(script)
 
         for f in "coadd.fits", "coadd.weight.fits":
             if not os.path.exists(f):
                 print("File not found", f)
-                sys.exit(1)
+                # sys.exit(1)
 
         # Rename output files
         script = "mv coadd.fits %s\n " % coadd_file
         script += "mv coadd.weight.fits %s\n" % coadd_weifile
 
-        os.system(script)
+        #os.system(script)
 
         for f in coadd_file, coadd_weifile:
             if not os.path.exists(f):
                 print("File not found", f)
-                sys.exit(1)
+                # sys.exit(1)
             else:
-                os.system("fpack %s" % f)
-                os.unlink(f)
+                #os.system("fpack %s" % f)
+                #os.unlink(f)
                 print("File %s fpacked and deleted" % f)
 
         # Remove unpacked files
@@ -136,15 +136,22 @@ for m in final_match:
                 # images
                 img_file = img_infile.replace("fits.fz", "%i.fits" % i_ext)
                 if os.path.exists(img_file):
-                    os.unlink(img_file)
+                    #os.unlink(img_file)
                     print("deleted %s" % img_file)
 
                 # weights
                 wei_infile = img_infile.replace("osi", "osw")
                 wei_file = "%s.%i.weight.fits" % (img_infile.replace(".fits.fz", ""), i_ext)
                 if os.path.exists(wei_file):
-                    os.unlink(wei_file)
+                    #os.unlink(wei_file)
                     print("deleted %s" % wei_file)
 
 # with open("tmp.sh", 'w') as fp:
 #     fp.write(swarp_script)
+
+
+# # For some reason, I had to do the commands below after this. some problem with the ra/dec ??
+#   530  ln -s /Users/wschoenell/data/ngc3115/c4d_170216_050619_osw_g_v2.fits.fz coadd_10:07:38.23_-7:07:07.8.g.weight.fits.fz
+#   531  ln -s /Users/wschoenell/data/ngc3115/c4d_170216_050619_osi_g_v2.fits.fz coadd_10:07:38.23_-7:07:07.8.g.fits.fz
+#   533  ln -s /Users/wschoenell/data/ngc3115/c4d_170216_061516_osi_r_v2.fits.fz coadd_10:07:38.23_-7:07:07.8.r.fits.fz
+#   534  ln -s /Users/wschoenell/data/ngc3115/c4d_170216_061516_osw_r_v2.fits.fz coadd_10:07:38.23_-7:07:07.8.r.weight.fits.fz
